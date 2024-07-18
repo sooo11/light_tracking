@@ -1,0 +1,65 @@
+import cv2
+import numpy as np
+
+# Open the video file
+cap = cv2.VideoCapture(r'C:\Users\MSI\Desktop\light.mp4')  # Path to the input video file.
+
+# Setup for saving the video: specify new filename and format
+fourcc = cv2.VideoWriter_fourcc(*'XVID')
+out = cv2.VideoWriter('processed_output_video.avi', fourcc, 20.0, (int(cap.get(3)), int(cap.get(4))))
+
+# Function to enhance brightness
+def adjust_gamma(image, gamma=1.5):
+    invGamma = 1.0 / gamma
+    table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+    return cv2.LUT(image, table)
+
+while cap.isOpened():
+    # Read a frame from the video
+    ret, frame = cap.read()
+    if not ret:
+        break  # Exit the loop if frame reading fails
+
+    # Adjust brightness
+    frame_adjusted = adjust_gamma(frame)
+
+    # Convert the frame to grayscale and apply Gaussian blur
+    gray = cv2.cvtColor(frame_adjusted, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (9, 9), 0)
+
+    # Apply a brightness threshold to the blurred image to detect bright areas
+    _, threshold = cv2.threshold(blur, 200, 255, cv2.THRESH_BINARY)
+
+    # Detect contours
+    contours, _ = cv2.findContours(threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Sort contours by area and select the largest two
+    if len(contours) >= 2:
+        largest_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
+
+        points = []
+        for contour in largest_contours:
+            M = cv2.moments(contour)
+            if M["m00"] != 0:
+                cx = int(M["m10"] / M["m00"])
+                cy = int(M["m01"] / M["m00"])
+                points.append((cx, cy))
+                # Draw a green circle at each location
+                cv2.circle(frame, (cx, cy), 20, (0, 255, 0), 2)
+                # Draw a filled orange rectangle at each location
+                cv2.rectangle(frame, (cx - 10, cy - 10), (cx + 10, cy + 10), (0, 128, 255), -1)
+                
+        if len(points) == 2:
+            # Calculate the distance between the two points
+            distance = np.linalg.norm(np.array(points[0]) - np.array(points[1]))
+            distance_text = f"Distance: {distance:.2f} pixels"
+            # Display the distance text on the frame
+            cv2.putText(frame, distance_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+    # Write the processed frame to the video file
+    out.write(frame)
+
+# Release all resources
+cap.release()
+out.release()
+cv2.destroyAllWindows()
